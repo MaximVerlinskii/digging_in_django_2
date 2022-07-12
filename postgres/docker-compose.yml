@@ -1,0 +1,16 @@
+# Use postgres/example user/password credentials
+version: '3.1'
+
+services:
+  db:
+    image: postgres:14.3-alpine
+    container_name: dig_django_postgres
+    restart: always
+    environment:
+      - POSTGRES_PASSWORD=secret
+      - POSTGRES_USER=digger
+      - POSTGRES_DB=db01
+    ports:
+      - "54321:5432"
+    volumes:
+      - F:\Python\digging_in_django_2_2\postgres\data:/var/lib/postgresql/data
