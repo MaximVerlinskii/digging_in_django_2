@@ -1,6 +1,7 @@
 import json
 
 from django.contrib.auth.models import User
+from django.db.models import When, Case, Count, Avg
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.exceptions import ErrorDetail
@@ -17,32 +18,50 @@ class BooksApiTestCase(APITestCase):
         self.book_1 = Book.objects.create(name='Test book 1', price=25, author_name='Author 1', owner=self.user)
         self.book_2 = Book.objects.create(name='Test book 2', price=55, author_name='Author 5')
         self.book_3 = Book.objects.create(name='Test book Author 1', price=55, author_name='Author 2')
+        UserBookRelation.objects.create(user=self.user, book=self.book_1, like=True, rate=5)
 
     def test_get(self):
         url = reverse('book-list')
         response = self.client.get(url)
-        serializer_data = BooksSerializer([self.book_1, self.book_2, self.book_3], many=True).data
+        books = Book.objects.all().annotate(
+            annotated_likes=Count(Case(When(userbookrelation__like=True, then=1))),
+            rating=Avg('userbookrelation__rate')).order_by('id')
+        serializer_data = BooksSerializer(books, many=True).data
         self.assertEqual(status.HTTP_200_OK, response.status_code)
         self.assertEqual(serializer_data, response.data)
+        self.assertEqual(serializer_data[0]['rating'], '5.00')
+        self.assertEqual(serializer_data[0]['likes_count'], 1)
+        self.assertEqual(serializer_data[0]['annotated_likes'], 1)
+
 
     def test_get_filter(self):
         url = reverse('book-list')
+        books = Book.objects.filter(id__in=[self.book_2.id, self.book_3.id]).annotate(
+            annotated_likes=Count(Case(When(userbookrelation__like=True, then=1))),
+            rating=Avg('userbookrelation__rate')).order_by('id')
         response = self.client.get(url, data={'price': 55})
-        serializer_data = BooksSerializer([self.book_2, self.book_3], many=True).data
+        serializer_data = BooksSerializer(books, many=True).data
         self.assertEqual(status.HTTP_200_OK, response.status_code)
         self.assertEqual(serializer_data, response.data)
 
     def test_get_search(self):
         url = reverse('book-list')
+        books = Book.objects.filter(id__in=[self.book_1.id, self.book_3.id]).annotate(
+            annotated_likes=Count(Case(When(userbookrelation__like=True, then=1))),
+            rating=Avg('userbookrelation__rate')).order_by('id')
         response = self.client.get(url, data={'search': 'Author 1'})
-        serializer_data = BooksSerializer([self.book_1, self.book_3], many=True).data
+        serializer_data = BooksSerializer(books, many=True).data
         self.assertEqual(status.HTTP_200_OK, response.status_code)
         self.assertEqual(serializer_data, response.data)
 
     def test_get_ordering(self):
         url = reverse('book-list')
+        books = Book.objects.all().annotate(
+            annotated_likes=Count(Case(When(userbookrelation__like=True, then=1))),
+            rating=Avg('userbookrelation__rate')).order_by('author_name')
         response = self.client.get(url, data={'ordering': 'author_name'})
-        serializer_data = BooksSerializer([self.book_1, self.book_3, self.book_2], many=True).data
+
+        serializer_data = BooksSerializer(books, many=True).data
         self.assertEqual(status.HTTP_200_OK, response.status_code)
         self.assertEqual(serializer_data, response.data)
 
@@ -113,9 +132,12 @@ class BooksApiTestCase(APITestCase):
     def test_get_1(self):
         url = reverse('book-detail', args=(self.book_1.id,))
         response = self.client.get(url)
-        serializer_data = BooksSerializer(self.book_1).data
+        book1 = Book.objects.filter(id__in=[self.book_1.id]).annotate(
+            annotated_likes=Count(Case(When(userbookrelation__like=True, then=1))),
+            rating=Avg('userbookrelation__rate'))
+        serializer_data = BooksSerializer(book1, many=True).data
         self.assertEqual(status.HTTP_200_OK, response.status_code)
-        self.assertEqual(serializer_data, response.data)
+        self.assertEqual(serializer_data[0], response.data)
 
 
 class BooksRelationTestCase(APITestCase):
